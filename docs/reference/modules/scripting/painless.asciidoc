@@ -40,11 +40,9 @@ to `painless`.
 
 To illustrate how Painless works, let's load some hockey stats into an Elasticsearch index:
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-DELETE /hockey-stats
-
-PUT /hockey-stats/player/_bulk
+PUT hockey/player/_bulk?refresh
 {"index":{"_id":1}}
 {"first":"johnny","last":"gaudreau","goals":[9,27,1],"assists":[17,46,0],"gp":[26,82,1]}
 {"index":{"_id":2}}
@@ -68,38 +66,39 @@ PUT /hockey-stats/player/_bulk
 {"index":{"_id":11}}
 {"first":"joe","last":"colborne","goals":[3,18,13],"assists":[6,20,24],"gp":[26,67,82]}
 ----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
+// TESTSETUP
 
 [float]
 === Accessing Doc Values from Painless
 
-All Painless scripts take in a `Map<String,def>` of values called `input`.  Document values can be accessed through another `Map<String,def>` within the `input` variable.
+Document values can be accessed from a `Map<String,def>` named `doc`.
 
 For example, the following script calculates a player's total goals. This example uses a strongly typed `int` and a `for` loop.
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-GET /hockey-stats/_search
+GET hockey/_search
 {
   "query": {
     "function_score": {
       "script_score": {
         "script": {
           "lang": "painless",
-          "inline": "int total = 0; for (int i = 0; i < input.doc.goals.size(); ++i) { total += input.doc.goals[i]; } return total;"
+          "inline": "int total = 0; for (int i = 0; i < doc['goals'].length; ++i) { total += doc['goals'][i]; } return total;"
         }
       }
     }
   }
 }
 ----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
 
 Alternatively, you could do the same thing using a script field instead of a function score:
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-GET /hockey-stats/_search
+GET hockey/_search
 {
   "query": {
     "match_all": {}
@@ -108,49 +107,48 @@ GET /hockey-stats/_search
     "total_goals": {
       "script": {
         "lang": "painless",
-        "inline": "int total = 0; for (int i = 0; i < input.doc.goals.size(); ++i) { total += input.doc.goals[i]; } return total;"
+        "inline": "int total = 0; for (int i = 0; i < doc['goals'].length; ++i) { total += doc['goals'][i]; } return total;"
       }
     }
   }
 }
 ----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
 
-You must always specify the index of the field value you want, even if there's only a single item in the field.
-All fields in Elasticsearch are multi-valued and Painless does not provide a `.value` shortcut. The following example uses a Painless script to sort the players by their combined first and last names. The names are accessed using
-`input.doc.first.0` and `input.doc.last.0`.
+The following example uses a Painless script to sort the players by their combined first and last names. The names are accessed using
+`doc['first'].value` and `doc['last'].value`.
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-GET /hockey-stats/_search
+GET hockey/_search
 {
   "query": {
     "match_all": {}
   },
   "sort": {
     "_script": {
-      "type": "keyword",
+      "type": "string",
       "order": "asc",
       "script": {
         "lang": "painless",
-        "inline": "input.doc.first.0 + \" \" + input.doc.last.0"
+        "inline": "doc['first'].value + ' ' + doc['last'].value"
       }
     }
   }
 }
 ----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
 
 [float]
 === Updating Fields with Painless
 
-You can also easily update fields. You access the original source for a field as `input.ctx._source.<field-name>`.
+You can also easily update fields. You access the original source for a field as `ctx._source.<field-name>`.
 
 First, let's look at the source data for a player by submitting the following request:
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-GET /hockey-stats/_search
+GET hockey/_search
 {
   "fields": [
     "_id",
@@ -163,35 +161,35 @@ GET /hockey-stats/_search
   }
 }
 ----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
 
-To change player 1's last name to `hockey`, simply set `input.ctx._source.last` to the new value:
+To change player 1's last name to `hockey`, simply set `ctx._source.last` to the new value:
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-POST /hockey-stats/player/1/_update
+POST hockey/player/1/_update
 {
   "script": {
     "lang": "painless",
-    "inline": "input.ctx._source.last = input.last",
+    "inline": "ctx._source.last = params.last",
     "params": {
       "last": "hockey"
     }
   }
 }
 ----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
 
 You can also add fields to a document. For example, this script adds a new field that contains
 the player's nickname,  _hockey_.
 
-[source,sh]
+[source,js]
 ----------------------------------------------------------------
-POST /hockey-stats/player/1/_update
+POST hockey/player/1/_update
 {
   "script": {
     "lang": "painless",
-    "inline": "input.ctx._source.last = input.last input.ctx._source.nick = input.nick",
+    "inline": "ctx._source.last = params.last; ctx._source.nick = params.nick",
     "params": {
       "last": "gaudreau",
       "nick": "hockey"
@@ -199,39 +197,7 @@ POST /hockey-stats/player/1/_update
   }
 }
 ----------------------------------------------------------------
-// AUTOSENSE
-
-[float]
-=== Writing Type-Safe Scripts to Improve Performance
-
-If you explicitly specify types, the compiler doesn't have to perform type lookups at runtime, which can significantly
-improve performance. For example, the following script performs the same first name, last name sort we showed before,
-but it's fully type-safe.
-
-[source,sh]
-----------------------------------------------------------------
-GET /hockey-stats/_search
-{
-  "query": {
-    "match_all": {}
-  },
-  "script_fields": {
-    "full_name_dynamic": {
-      "script": {
-        "lang": "painless",
-        "inline": "def first = input.doc.first.0; def last = input.doc.last.0; return first + \" \" + last;"
-      }
-    },
-    "full_name_static": {
-      "script": {
-        "lang": "painless",
-        "inline": "String first = (String)((List)((Map)input.get(\"doc\")).get(\"first\")).get(0); String last = (String)((List)((Map)input.get(\"doc\")).get(\"last\")).get(0); return first + \" \" + last;"
-      }
-    }
-  }
-}
-----------------------------------------------------------------
-// AUTOSENSE
+// CONSOLE
 
 [[painless-api]]
 [float]

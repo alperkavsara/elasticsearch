@@ -40,7 +40,7 @@ import java.io.IOException;
 /**
  * Holds additional information as to why the shard is in unassigned state.
  */
-public class UnassignedInfo implements ToXContent, Writeable {
+public final class UnassignedInfo implements ToXContent, Writeable {
 
     public static final FormatDateTimeFormatter DATE_TIME_FORMATTER = Joda.forPattern("dateOptionalTime");
     private static final TimeValue DEFAULT_DELAYED_NODE_LEFT_TIMEOUT = TimeValue.timeValueMinutes(1);
@@ -48,7 +48,6 @@ public class UnassignedInfo implements ToXContent, Writeable {
     public static final Setting<TimeValue> INDEX_DELAYED_NODE_LEFT_TIMEOUT_SETTING =
         Setting.timeSetting("index.unassigned.node_left.delayed_timeout", DEFAULT_DELAYED_NODE_LEFT_TIMEOUT, Property.Dynamic,
             Property.IndexScope);
-
     /**
      * Reason why the shard is in unassigned state.
      * <p>
@@ -103,15 +102,20 @@ public class UnassignedInfo implements ToXContent, Writeable {
         /**
          * A better replica location is identified and causes the existing replica allocation to be cancelled.
          */
-        REALLOCATED_REPLICA;
+        REALLOCATED_REPLICA,
+        /**
+         * Unassigned as a result of a failed primary while the replica was initializing.
+         */
+        PRIMARY_FAILED;
     }
 
     private final Reason reason;
     private final long unassignedTimeMillis; // used for display and log messages, in milliseconds
     private final long unassignedTimeNanos; // in nanoseconds, used to calculate delay for delayed shard allocation
-    private volatile long lastComputedLeftDelayNanos = 0L; // how long to delay shard allocation, not serialized (always positive, 0 means no delay)
+    private final long lastComputedLeftDelayNanos; // how long to delay shard allocation, not serialized (always positive, 0 means no delay)
     private final String message;
     private final Throwable failure;
+    private final int failedAllocations;
 
     /**
      * creates an UnassingedInfo object based **current** time
@@ -120,7 +124,7 @@ public class UnassignedInfo implements ToXContent, Writeable {
      * @param message more information about cause.
      **/
     public UnassignedInfo(Reason reason, String message) {
-        this(reason, message, null, System.nanoTime(), System.currentTimeMillis());
+        this(reason, message, null, reason == Reason.ALLOCATION_FAILED ? 1 : 0, System.nanoTime(), System.currentTimeMillis());
     }
 
     /**
@@ -130,23 +134,39 @@ public class UnassignedInfo implements ToXContent, Writeable {
      * @param unassignedTimeNanos  the time to use as the base for any delayed re-assignment calculation
      * @param unassignedTimeMillis the time of unassignment used to display to in our reporting.
      */
-    public UnassignedInfo(Reason reason, @Nullable String message, @Nullable Throwable failure, long unassignedTimeNanos, long unassignedTimeMillis) {
+    public UnassignedInfo(Reason reason, @Nullable String message, @Nullable Throwable failure, int failedAllocations, long unassignedTimeNanos, long unassignedTimeMillis) {
         this.reason = reason;
         this.unassignedTimeMillis = unassignedTimeMillis;
         this.unassignedTimeNanos = unassignedTimeNanos;
+        this.lastComputedLeftDelayNanos = 0L;
         this.message = message;
         this.failure = failure;
+        this.failedAllocations = failedAllocations;
+        assert (failedAllocations > 0) == (reason == Reason.ALLOCATION_FAILED):
+            "failedAllocations: " + failedAllocations + " for reason " + reason;
         assert !(message == null && failure != null) : "provide a message if a failure exception is provided";
+    }
+
+    public UnassignedInfo(UnassignedInfo unassignedInfo, long newComputedLeftDelayNanos) {
+        this.reason = unassignedInfo.reason;
+        this.unassignedTimeMillis = unassignedInfo.unassignedTimeMillis;
+        this.unassignedTimeNanos = unassignedInfo.unassignedTimeNanos;
+        this.lastComputedLeftDelayNanos = newComputedLeftDelayNanos;
+        this.message = unassignedInfo.message;
+        this.failure = unassignedInfo.failure;
+        this.failedAllocations = unassignedInfo.failedAllocations;
     }
 
     public UnassignedInfo(StreamInput in) throws IOException {
         this.reason = Reason.values()[(int) in.readByte()];
         this.unassignedTimeMillis = in.readLong();
         // As System.nanoTime() cannot be compared across different JVMs, reset it to now.
-        // This means that in master failover situations, elapsed delay time is forgotten.
+        // This means that in master fail-over situations, elapsed delay time is forgotten.
         this.unassignedTimeNanos = System.nanoTime();
+        this.lastComputedLeftDelayNanos = 0L;
         this.message = in.readOptionalString();
         this.failure = in.readThrowable();
+        this.failedAllocations = in.readVInt();
     }
 
     public void writeTo(StreamOutput out) throws IOException {
@@ -155,11 +175,17 @@ public class UnassignedInfo implements ToXContent, Writeable {
         // Do not serialize unassignedTimeNanos as System.nanoTime() cannot be compared across different JVMs
         out.writeOptionalString(message);
         out.writeThrowable(failure);
+        out.writeVInt(failedAllocations);
     }
 
     public UnassignedInfo readFrom(StreamInput in) throws IOException {
         return new UnassignedInfo(in);
     }
+
+    /**
+     * Returns the number of previously failed allocations of this shard.
+     */
+    public int getNumFailedAllocations() { return failedAllocations; }
 
     /**
      * The reason why the shard is unassigned.
@@ -247,14 +273,16 @@ public class UnassignedInfo implements ToXContent, Writeable {
     }
 
     /**
-     * Updates delay left based on current time (in nanoseconds) and index/node settings.
+     * Creates new UnassignedInfo object if delay needs updating.
      *
-     * @return updated delay in nanoseconds
+     * @return new Unassigned with updated delay, or this if no change in delay
      */
-    public long updateDelay(final long nanoTimeNow, final Settings settings, final Settings indexSettings) {
+    public UnassignedInfo updateDelay(final long nanoTimeNow, final Settings settings, final Settings indexSettings) {
         final long newComputedLeftDelayNanos = getRemainingDelay(nanoTimeNow, settings, indexSettings);
-        lastComputedLeftDelayNanos = newComputedLeftDelayNanos;
-        return newComputedLeftDelayNanos;
+        if (lastComputedLeftDelayNanos == newComputedLeftDelayNanos) {
+            return this;
+        }
+        return new UnassignedInfo(this, newComputedLeftDelayNanos);
     }
 
     /**
@@ -312,7 +340,11 @@ public class UnassignedInfo implements ToXContent, Writeable {
         StringBuilder sb = new StringBuilder();
         sb.append("[reason=").append(reason).append("]");
         sb.append(", at[").append(DATE_TIME_FORMATTER.printer().print(unassignedTimeMillis)).append("]");
+        if (failedAllocations >  0) {
+            sb.append(", failed_attempts[").append(failedAllocations).append("]");
+        }
         String details = getDetails();
+
         if (details != null) {
             sb.append(", details[").append(details).append("]");
         }
@@ -329,6 +361,9 @@ public class UnassignedInfo implements ToXContent, Writeable {
         builder.startObject("unassigned_info");
         builder.field("reason", reason);
         builder.field("at", DATE_TIME_FORMATTER.printer().print(unassignedTimeMillis));
+        if (failedAllocations >  0) {
+            builder.field("failed_attempts", failedAllocations);
+        }
         String details = getDetails();
         if (details != null) {
             builder.field("details", details);

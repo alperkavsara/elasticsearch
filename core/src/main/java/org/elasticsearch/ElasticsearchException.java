@@ -21,9 +21,9 @@ package org.elasticsearch;
 
 import org.elasticsearch.action.support.replication.ReplicationOperation;
 import org.elasticsearch.cluster.action.shard.ShardStateAction;
-import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.logging.LoggerMessageFormat;
 import org.elasticsearch.common.xcontent.ToXContent;
 import org.elasticsearch.common.xcontent.XContentBuilder;
@@ -47,7 +47,7 @@ import static org.elasticsearch.cluster.metadata.IndexMetaData.INDEX_UUID_NA_VAL
 /**
  * A base class for all elasticsearch exceptions.
  */
-public class ElasticsearchException extends RuntimeException implements ToXContent {
+public class ElasticsearchException extends RuntimeException implements ToXContent, Writeable {
 
     public static final String REST_EXCEPTION_SKIP_CAUSE = "rest.exception.cause.skip";
     public static final String REST_EXCEPTION_SKIP_STACK_TRACE = "rest.exception.stacktrace.skip";
@@ -235,6 +235,7 @@ public class ElasticsearchException extends RuntimeException implements ToXConte
         }
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeOptionalString(this.getMessage());
         out.writeThrowable(this.getCause());
@@ -679,8 +680,6 @@ public class ElasticsearchException extends RuntimeException implements ToXConte
                 org.elasticsearch.index.shard.IndexShardRecoveryException::new, 106),
         REPOSITORY_MISSING_EXCEPTION(org.elasticsearch.repositories.RepositoryMissingException.class,
                 org.elasticsearch.repositories.RepositoryMissingException::new, 107),
-        PERCOLATOR_EXCEPTION(org.elasticsearch.index.percolator.PercolatorException.class,
-                org.elasticsearch.index.percolator.PercolatorException::new, 108),
         DOCUMENT_SOURCE_MISSING_EXCEPTION(org.elasticsearch.index.engine.DocumentSourceMissingException.class,
                 org.elasticsearch.index.engine.DocumentSourceMissingException::new, 109),
         FLUSH_NOT_ALLOWED_ENGINE_EXCEPTION(org.elasticsearch.index.engine.FlushNotAllowedEngineException.class,

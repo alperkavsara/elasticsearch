@@ -41,7 +41,7 @@ GET my_index/_search
   }
 }
 -------------------------------------
-// AUTOSENSE
+// CONSOLE
 
 
 [float]
@@ -117,6 +117,9 @@ files stored on every node in the cluster.  File scripts must be saved in the
 <<rpm-layout,RPM>>, or <<deb-layout,Debian>> package.  The default may be
 changed with the `path.script` setting.
 
+The languages which are assumed to be safe by default are: `painless`,
+`expression`, and `mustache` (used for search and query templates).
+
 Any files placed in the `scripts` directory will be compiled automatically
 when the node starts up and then <<reload-scripts,every 60 seconds thereafter>>.
 
@@ -186,35 +189,27 @@ state:
 
 [source,js]
 -----------------------------------
-POST /_scripts/groovy/calculate-score
+POST _scripts/groovy/calculate-score
 {
   "script": "log(_score * 2) + my_modifier"
 }
 -----------------------------------
-// AUTOSENSE
-
+// CONSOLE
 
 This same script can be retrieved with:
 
 [source,js]
 -----------------------------------
-GET /_scripts/groovy/calculate-score
+GET _scripts/groovy/calculate-score
 -----------------------------------
-// AUTOSENSE
-
-or deleted with:
-
-[source,js]
------------------------------------
-DELETE /_scripts/groovy/calculate-score
------------------------------------
-// AUTOSENSE
+// CONSOLE
+// TEST[continued]
 
 Stored scripts can be used by specifying the `lang` and `id` parameters as follows:
 
 [source,js]
 --------------------------------------------------
-GET my_index/_search
+GET _search
 {
   "query": {
     "script": {
@@ -229,10 +224,19 @@ GET my_index/_search
   }
 }
 --------------------------------------------------
+// CONSOLE
+// TEST[continued]
 
+And deleted with:
+
+[source,js]
+-----------------------------------
+DELETE _scripts/groovy/calculate-score
+-----------------------------------
+// CONSOLE
+// TEST[continued]
 
 NOTE: The size of stored scripts is limited to 65,535 bytes. This can be
 changed by setting `script.max_size_in_bytes` setting to increase that soft
 limit, but if scripts are really large then alternatives like
 <<modules-scripting-native,native>> scripts should be considered instead.
-

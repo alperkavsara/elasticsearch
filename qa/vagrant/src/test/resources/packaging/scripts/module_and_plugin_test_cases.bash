@@ -208,10 +208,6 @@ fi
     install_and_check_plugin discovery gce google-api-client-*.jar
 }
 
-@test "[$GROUP] install delete by query plugin" {
-    install_and_check_plugin - delete-by-query
-}
-
 @test "[$GROUP] install discovery-azure plugin" {
     install_and_check_plugin discovery azure azure-core-*.jar
 }
@@ -289,6 +285,10 @@ fi
     install_and_check_plugin repository azure azure-storage-*.jar
 }
 
+@test "[$GROUP] install repository-gcs plugin" {
+    install_and_check_plugin repository gcs google-api-services-storage-*.jar
+}
+
 @test "[$GROUP] install repository-s3 plugin" {
     install_and_check_plugin repository s3 aws-java-sdk-core-*.jar
 }
@@ -343,10 +343,6 @@ fi
     remove_plugin discovery-gce
 }
 
-@test "[$GROUP] remove delete by query plugin" {
-    remove_plugin delete-by-query
-}
-
 @test "[$GROUP] remove discovery-azure plugin" {
     remove_plugin discovery-azure
 }
@@ -385,6 +381,10 @@ fi
 
 @test "[$GROUP] remove repository-azure plugin" {
     remove_plugin repository-azure
+}
+
+@test "[$GROUP] remove repository-gcs plugin" {
+    remove_plugin repository-gcs
 }
 
 @test "[$GROUP] remove repository-hdfs plugin" {
@@ -438,7 +438,7 @@ fi
     remove_jvm_example
 
     local relativePath=${1:-$(readlink -m jvm-example-*.zip)}
-    sudo -E -u $ESPLUGIN_COMMAND_USER "$ESHOME/bin/elasticsearch-plugin" install "file://$relativePath" -Des.logger.level=DEBUG > /tmp/plugin-cli-output
+    sudo -E -u $ESPLUGIN_COMMAND_USER ES_JAVA_OPTS="-Des.logger.level=DEBUG" "$ESHOME/bin/elasticsearch-plugin" install "file://$relativePath" > /tmp/plugin-cli-output
     local loglines=$(cat /tmp/plugin-cli-output | wc -l)
     if [ "$GROUP" == "TAR PLUGINS" ]; then
         [ "$loglines" -gt "3" ] || {

@@ -106,7 +106,7 @@ public class TemplateQueryParserTests extends ESTestCase {
         ScriptModule scriptModule = new ScriptModule();
         scriptModule.prepareSettings(settingsModule);
         // TODO: make this use a mock engine instead of mustache and it will no longer be messy!
-        scriptModule.addScriptEngine(new ScriptEngineRegistry.ScriptEngineRegistration(MustacheScriptEngineService.class, MustacheScriptEngineService.TYPES));
+        scriptModule.addScriptEngine(new ScriptEngineRegistry.ScriptEngineRegistration(MustacheScriptEngineService.class, MustacheScriptEngineService.NAME, true));
         settingsModule.registerSetting(InternalSettingsPlugin.VERSION_CREATED);
         injector = new ModulesBuilder().add(
                 new EnvironmentModule(new Environment(settings)),
@@ -152,7 +152,7 @@ public class TemplateQueryParserTests extends ESTestCase {
         });
         IndicesQueriesRegistry indicesQueriesRegistry = injector.getInstance(IndicesQueriesRegistry.class);
         contextFactory =  () -> new QueryShardContext(idxSettings, bitsetFilterCache, indexFieldDataService, mapperService,
-                similarityService, scriptService, indicesQueriesRegistry, proxy, null, null, null);
+                similarityService, scriptService, indicesQueriesRegistry, proxy, null, null);
     }
 
     @Override

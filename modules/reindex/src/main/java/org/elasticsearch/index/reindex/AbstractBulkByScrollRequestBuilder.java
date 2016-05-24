@@ -62,7 +62,7 @@ public abstract class AbstractBulkByScrollRequestBuilder<
      * Set the query that will filter the source. Just a convenience method for
      * easy chaining.
      */
-    public Self filter(QueryBuilder<?> filter) {
+    public Self filter(QueryBuilder filter) {
         source.setQuery(filter);
         return self();
     }
@@ -104,6 +104,23 @@ public abstract class AbstractBulkByScrollRequestBuilder<
      */
     public Self consistency(WriteConsistencyLevel consistency) {
         request.setConsistency(consistency);
+        return self();
+    }
+
+    /**
+     * Initial delay after a rejection before retrying a bulk request. With the default maxRetries the total backoff for retrying rejections
+     * is about one minute per bulk request. Once the entire bulk request is successful the retry counter resets.
+     */
+    public Self setRetryBackoffInitialTime(TimeValue retryBackoffInitialTime) {
+        request.setRetryBackoffInitialTime(retryBackoffInitialTime);
+        return self();
+    }
+
+    /**
+     * Total number of retries attempted for rejections. There is no way to ask for unlimited retries.
+     */
+    public Self setMaxRetries(int maxRetries) {
+        request.setMaxRetries(maxRetries);
         return self();
     }
 

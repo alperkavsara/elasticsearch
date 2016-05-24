@@ -278,6 +278,18 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
     }
 
     /**
+     * Lightly connect to the specified node
+     *
+     * @param node the node to connect to
+     */
+    public void connectToNodeLight(final DiscoveryNode node) {
+        if (node.equals(localNode)) {
+            return;
+        }
+        transport.connectToNodeLight(node);
+    }
+
+    /**
      * Lightly connect to the specified node, and handshake cluster
      * name and version
      *
@@ -287,8 +299,10 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
      * @throws ConnectTransportException if the connection or the
      *                                   handshake failed
      */
-    public DiscoveryNode connectToNodeLight(final DiscoveryNode node, final long handshakeTimeout) throws ConnectTransportException {
-        return connectToNodeLight(node, handshakeTimeout, true);
+    public DiscoveryNode connectToNodeLightAndHandshake(
+            final DiscoveryNode node,
+            final long handshakeTimeout) throws ConnectTransportException {
+        return connectToNodeLightAndHandshake(node, handshakeTimeout, true);
     }
 
     /**
@@ -305,7 +319,10 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
      * @throws ConnectTransportException if the connection or the
      *                                   handshake failed
      */
-    public DiscoveryNode connectToNodeLight(final DiscoveryNode node, final long handshakeTimeout, final boolean checkClusterName) {
+    public DiscoveryNode connectToNodeLightAndHandshake(
+            final DiscoveryNode node,
+            final long handshakeTimeout,
+            final boolean checkClusterName) {
         if (node.equals(localNode)) {
             return localNode;
         }
@@ -353,7 +370,7 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
                 localNode != null ? localNode.getVersion().minimumCompatibilityVersion() : Version.CURRENT.minimumCompatibilityVersion());
     }
 
-    public static class HandshakeRequest extends TransportRequest {
+    static class HandshakeRequest extends TransportRequest {
 
         public static final HandshakeRequest INSTANCE = new HandshakeRequest();
 
@@ -362,7 +379,7 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
 
     }
 
-    public static class HandshakeResponse extends TransportResponse {
+    static class HandshakeResponse extends TransportResponse {
         private DiscoveryNode discoveryNode;
         private ClusterName clusterName;
         private Version version;
@@ -563,23 +580,27 @@ public class TransportService extends AbstractLifecycleComponent<TransportServic
      */
     public <Request extends TransportRequest> void registerRequestHandler(String action, Supplier<Request> requestFactory, String executor,
                                                                           TransportRequestHandler<Request> handler) {
-        RequestHandlerRegistry<Request> reg = new RequestHandlerRegistry<>(action, requestFactory, taskManager, handler, executor, false);
+        RequestHandlerRegistry<Request> reg = new RequestHandlerRegistry<>(
+            action, requestFactory, taskManager, handler, executor, false, true);
         registerRequestHandler(reg);
     }
 
     /**
      * Registers a new request handler
      *
-     * @param action         The action the request handler is associated with
-     * @param request        The request class that will be used to constrcut new instances for streaming
-     * @param executor       The executor the request handling will be executed on
-     * @param forceExecution Force execution on the executor queue and never reject it
-     * @param handler        The handler itself that implements the request handling
+     * @param action                The action the request handler is associated with
+     * @param request               The request class that will be used to constrcut new instances for streaming
+     * @param executor              The executor the request handling will be executed on
+     * @param forceExecution        Force execution on the executor queue and never reject it
+     * @param canTripCircuitBreaker Check the request size and raise an exception in case the limit is breached.
+     * @param handler               The handler itself that implements the request handling
      */
     public <Request extends TransportRequest> void registerRequestHandler(String action, Supplier<Request> request,
                                                                           String executor, boolean forceExecution,
+                                                                          boolean canTripCircuitBreaker,
                                                                           TransportRequestHandler<Request> handler) {
-        RequestHandlerRegistry<Request> reg = new RequestHandlerRegistry<>(action, request, taskManager, handler, executor, forceExecution);
+        RequestHandlerRegistry<Request> reg = new RequestHandlerRegistry<>(
+            action, request, taskManager, handler, executor, forceExecution, canTripCircuitBreaker);
         registerRequestHandler(reg);
     }
 

@@ -25,7 +25,6 @@ import org.apache.lucene.search.BooleanQuery;
 import org.apache.lucene.search.Collector;
 import org.apache.lucene.search.ConstantScoreQuery;
 import org.apache.lucene.search.Query;
-import org.apache.lucene.search.Sort;
 import org.apache.lucene.search.FieldDoc;
 import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.Counter;
@@ -49,7 +48,6 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.mapper.internal.TypeFieldMapper;
 import org.elasticsearch.index.mapper.object.ObjectMapper;
-import org.elasticsearch.index.percolator.PercolatorQueryCache;
 import org.elasticsearch.index.query.AbstractQueryBuilder;
 import org.elasticsearch.index.query.ParsedQuery;
 import org.elasticsearch.index.query.QueryShardContext;
@@ -71,6 +69,7 @@ import org.elasticsearch.search.profile.Profilers;
 import org.elasticsearch.search.query.QueryPhaseExecutionException;
 import org.elasticsearch.search.query.QuerySearchResult;
 import org.elasticsearch.search.rescore.RescoreSearchContext;
+import org.elasticsearch.search.sort.SortAndFormats;
 import org.elasticsearch.search.suggest.SuggestionSearchContext;
 
 import java.io.IOException;
@@ -114,7 +113,7 @@ public class DefaultSearchContext extends SearchContext {
     private FetchSourceContext fetchSourceContext;
     private int from = -1;
     private int size = -1;
-    private Sort sort;
+    private SortAndFormats sort;
     private Float minimumScore;
     private boolean trackScores = false; // when sorting, track scores as well...
     private FieldDoc searchAfter;
@@ -216,7 +215,7 @@ public class DefaultSearchContext extends SearchContext {
                             + "be less than [" + maxWindow + "]. This prevents allocating massive heaps for storing the results to be "
                             + "rescored. This limit can be set by chaning the [" + IndexSettings.MAX_RESCORE_WINDOW_SETTING.getKey()
                             + "] index level setting.");
-                
+
                 }
             }
         }
@@ -496,11 +495,6 @@ public class DefaultSearchContext extends SearchContext {
     }
 
     @Override
-    public PercolatorQueryCache percolatorQueryCache() {
-        return indexService.cache().getPercolatorQueryCache();
-    }
-
-    @Override
     public long timeoutInMillis() {
         return timeoutInMillis;
     }
@@ -532,13 +526,13 @@ public class DefaultSearchContext extends SearchContext {
     }
 
     @Override
-    public SearchContext sort(Sort sort) {
+    public SearchContext sort(SortAndFormats sort) {
         this.sort = sort;
         return this;
     }
 
     @Override
-    public Sort sort() {
+    public SortAndFormats sort() {
         return this.sort;
     }
 
